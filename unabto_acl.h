@@ -86,7 +86,7 @@ fp_acl_db_status fp_acl_file_list_file();
 fp_acl_db_status fp_acl_file_remove_file();
 fp_acl_db_status fp_acl_file_add_file();
 bool fp_mem_is_slot_free(struct fp_acl_user* ix);
+bool parse_argv(int argc, char* argv[], struct configuration* config);
+static void help(const char* errmsg, const char *progname);
 void Convert_2Hex(uint32_t val, uint32_t *tmp1, uint32_t *tmp2);
-void fp_get_fp_from_stdin(fingerprint fpLocal);
-void fp_get_user_from_stdin(username* newUser);
-
+bool fp_get_fingerprint(char *, fingerprint fpLocal);

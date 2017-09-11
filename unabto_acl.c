@@ -15,49 +15,67 @@
 #include <string.h>
 #include <stdbool.h>
 
+struct configuration {
+    const char *action;
+    const char *aclfilename;
+    const char *fingerprint;
+    const char *user;
+};
+
 #include "unabto_acl.h"
+#include "gopt.h"
+
+static void help(const char* errmsg, const char *progname)
+{
+    if (errmsg) {
+        printf("ERROR: %s\n", errmsg);
+    }
+    printf("Usage: %s <list/add/remove> -F <acl filename> [-f <fingerprint>] [-u <user>]\n\n", progname);
+    printf("Example: \n");
+    printf("       %s list -F <acl filename>\n", progname);
+    printf("       %s add -F <acl filename> -f <fingerprint> -u <user>\n", progname);
+    printf("       %s remove -F <acl filename> -f <fingerprint>\n\n", progname);
+}
 
 main(argc, argv)
 int argc;
 char *argv[];
 {
-    if (argc != 3) {
-	printf("Usage: %s <command> <ACL filename>\n", argv[0]);
-	exit(1);
-    }
-    if (strcmp(argv[1],"list") && strcmp(argv[1],"add") && strcmp(argv[1],"remove")) {
-	printf("Usage: %s <list/add/remove> <ACL filename>\n", argv[0]);
-	exit(1);
+    struct configuration config;
+    memset(&config, 0, sizeof(struct configuration));
+
+    if (!parse_argv(argc, argv, &config)) {
+        help(0, argv[0]);
+        return 1;
     }
 
-    if (!strcmp(argv[1], "list")) {
-	if (fp_acl_file_list_file(argv[2]) != FP_ACL_DB_OK)
+    if (!strcmp(config.action, "list")) {
+	if (fp_acl_file_list_file(&config) != FP_ACL_DB_OK)
 	    printf("List Failed\n");
     }
     else
-    if (!strcmp(argv[1], "remove")) {
-	if (fp_acl_file_remove_file(argv[2]) != FP_ACL_DB_OK)
+    if (!strcmp(config.action, "remove")) {
+	if (fp_acl_file_remove_file(&config) != FP_ACL_DB_OK)
 	    printf("Remove Failed\n");
     }
     else
-    if (!strcmp(argv[1], "add")) {
-	if (fp_acl_file_add_file(argv[2]) != FP_ACL_DB_OK)
+    if (!strcmp(config.action, "add")) {
+	if (fp_acl_file_add_file(&config) != FP_ACL_DB_OK)
 	    printf("Add Failed\n");
     }
-    else
-	printf("Not supported now. Under development\n");
+
     exit(0);
 }
 
 // listing of ACL file
-fp_acl_db_status fp_acl_file_list_file(char *filename)
+fp_acl_db_status fp_acl_file_list_file(struct configuration* config)
 {
     struct fp_mem_state acl;
 
-    FILE* aclFile = fopen(filename, "rb+");
+    FILE* aclFile = fopen(config->aclfilename, "rb+");
     if (aclFile == NULL) {
         // there no saved acl file, consider it as a completely normal bootstrap scenario
-	printf("File [%s] does not exists!\n", filename);
+	printf("File [%s] does not exists!\n", config->aclfilename);
         return FP_ACL_DB_OK;
     }
 
@@ -126,14 +144,15 @@ fp_acl_db_status fp_acl_file_list_file(char *filename)
 }
 
 // removing an entry from ACL file
-fp_acl_db_status fp_acl_file_remove_file(char *filename)
+fp_acl_db_status fp_acl_file_remove_file(struct configuration* config)
 {
     struct fp_mem_state acl;
+    char *tmp_fp;
 
-    FILE* aclFile = fopen(filename, "rb+");
+    FILE* aclFile = fopen(config->aclfilename, "rb+");
     if (aclFile == NULL) {
         // there no saved acl file, consider it as a completely normal bootstrap scenario
-	printf("File [%s] does not exists!\n", filename);
+	printf("File [%s] does not exists!\n", config->aclfilename);
         return FP_ACL_DB_OK;
     }
 
@@ -144,7 +163,11 @@ fp_acl_db_status fp_acl_file_remove_file(char *filename)
 
     uint32_t i,j=0;
 
-    fp_get_fp_from_stdin(fp_to_remove);
+    tmp_fp = strdup(config->fingerprint);
+    if (fp_get_fingerprint(tmp_fp, fp_to_remove) != 1) {
+        printf("Invalid Fingerprint\n");
+        return FP_ACL_DB_LOAD_FAILED;
+    }
 
     // load version
     uint8_t buffer[128];
@@ -200,7 +223,7 @@ fp_acl_db_status fp_acl_file_remove_file(char *filename)
     char *tmpFile = "acl_tmp.bin";
     FILE* aclFileTmp = fopen(tmpFile, "wb");
     if (aclFileTmp == NULL) {
-	printf("File [%s] unable to create!\n", filename);
+	printf("Unable to create temp file!\n");
         return FP_ACL_DB_OK;
     }
 
@@ -230,7 +253,7 @@ fp_acl_db_status fp_acl_file_remove_file(char *filename)
     }
     fflush(aclFileTmp);
     fclose(aclFileTmp);
-    if (rename(tmpFile, filename) != 0) {
+    if (rename(tmpFile, config->aclfilename) != 0) {
         return FP_ACL_DB_SAVE_FAILED;
     }
     printf("Successfully removed\n");
@@ -238,14 +261,15 @@ fp_acl_db_status fp_acl_file_remove_file(char *filename)
 }
 
 // adding an entry to ACL file
-fp_acl_db_status fp_acl_file_add_file(char *filename)
+fp_acl_db_status fp_acl_file_add_file(struct configuration* config)
 {
     struct fp_mem_state acl;
+    char *tmp_fp;
 
-    FILE* aclFile = fopen(filename, "rb+");
+    FILE* aclFile = fopen(config->aclfilename, "rb+");
     if (aclFile == NULL) {
         // there no saved acl file, consider it as a completely normal bootstrap scenario
-	printf("File [%s] does not exists!\n", filename);
+	printf("File [%s] does not exists!\n", config->aclfilename);
         return FP_ACL_DB_OK;
     }
 
@@ -257,8 +281,12 @@ fp_acl_db_status fp_acl_file_add_file(char *filename)
 
     uint32_t i,j=0;
 
-    fp_get_fp_from_stdin(fp_to_add);
-    fp_get_user_from_stdin(&user_to_add);
+    tmp_fp = strdup(config->fingerprint);
+    if (fp_get_fingerprint(tmp_fp, fp_to_add) != 1) {
+        printf("Invalid Fingerprint\n");
+        return FP_ACL_DB_LOAD_FAILED;
+    }
+    memcpy(user_to_add, config->user, FP_ACL_USERNAME_MAX_LENGTH);
 
     // load version
     uint8_t buffer[128];
@@ -311,7 +339,7 @@ fp_acl_db_status fp_acl_file_add_file(char *filename)
     char *tmpFile = "acl_tmp.bin";
     FILE* aclFileTmp = fopen(tmpFile, "wb");
     if (aclFileTmp == NULL) {
-	printf("File [%s] unable to create!\n", filename);
+	printf("Unable to create temp file!\n");
         return FP_ACL_DB_OK;
     }
 
@@ -352,7 +380,7 @@ fp_acl_db_status fp_acl_file_add_file(char *filename)
     }
     fflush(aclFileTmp);
     fclose(aclFileTmp);
-    if (rename(tmpFile, filename) != 0) {
+    if (rename(tmpFile, config->aclfilename) != 0) {
         return FP_ACL_DB_SAVE_FAILED;
     }
     printf("Successfully added\n");
@@ -372,27 +400,28 @@ void Convert_2Hex(uint32_t val, uint32_t *tmp1, uint32_t *tmp2)
     *tmp2 = val & 0xffff;
 }
 
-void fp_get_fp_from_stdin(fingerprint fpLocal)
+bool fp_get_fingerprint(char *fpargv, fingerprint fpLocal)
 {
-    uint32_t i,j=0;
-    char s[48] = "\0";
-    while (1) {
-        printf("Enter 16Byte Device Fingerprint <eg. 12:ef:50:...:10>: ");
-        scanf("%47s", s);
-        if (strlen(s) >= 31 || strlen(s) <= 47) { // check length of string 
-            for (i=0, j=0; s[i] != '\0'; i++) {
-                if (s[i] == ':') j++;
-            }
-            if (j==15) {	// check number of semicolon in the string
-                if (strstr(s,"::") == NULL) {
-                    if (s[strspn(s, "0123456789abcdefABCDEF:")] == 0) break; // check for any invalid chars
-                }
+    uint32_t i,j = 0;
+
+    if (strlen(fpargv) >= 31 || strlen(fpargv) <= 47) { // check length of string 
+        for (i=0, j=0; fpargv[i] != '\0'; i++) {
+            if (fpargv[i] == ':') j++;
+        }
+        i = 0;
+        if (j==15) {	// check number of semicolon in the string
+            if (strstr(fpargv,"::") == NULL) {
+                if (fpargv[strspn(fpargv, "0123456789abcdefABCDEF:")] == 0)   // check for any invalid chars
+                    i = 1; 
             }
         }
-        printf("Invalid fingerprint. Please retry\n");
     }
+    if (!i) {
+        return false;
+    }
+
     j=0;
-    sscanf(s, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx", 
+    sscanf(fpargv, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx", 
 	&fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++],
 	&fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++], &fpLocal[j++]);
 
@@ -400,10 +429,52 @@ void fp_get_fp_from_stdin(fingerprint fpLocal)
     for (j=0; j<FP_ACL_FP_LENGTH;j++) 
         printf("%x ", fpLocal[j]);
     */
+
+    return true;
 }
 
-void fp_get_user_from_stdin(username* newUser)
+bool parse_argv(int argc, char* argv[], struct configuration* config) 
 {
-    printf("Enter Username: ");
-    scanf("%s", newUser);
+    const char x0s[] = "h?";     const char* x0l[] = { "help", 0 };
+    const char x1s[] = "F";      const char* x1l[] = { "aclfilename", 0 };
+    const char x2s[] = "f";      const char* x2l[] = { "fingerprint", 0 };
+    const char x3s[] = "u";      const char* x3l[] = { "user", 0 };
+
+    const struct { int k; int f; const char *s; const char*const* l; } opts[] = {
+        { 'h', 0,           x0s, x0l },
+        { 'F', GOPT_ARG,    x1s, x1l },
+        { 'f', GOPT_ARG,    x2s, x2l },
+        { 'u', GOPT_ARG,    x3s, x3l },
+        { 0, 0, 0, 0 }
+    };
+    void *options = gopt_sort( & argc, (const char**)argv, opts);
+
+    if( gopt( options, 'h')) {
+        help(0, argv[0]);
+        exit(0);
+    }
+
+    if (argc <= 1) return false;
+    config->action = strdup(argv[1]);
+    if (strcmp(config->action, "list") && strcmp(config->action, "add") && strcmp(config->action, "remove")) {
+       	    return false;
+    }
+
+    if (!gopt_arg(options, 'F', &config->aclfilename)) {
+        return false;
+    }
+
+    if (!strcmp(config->action, "add") || !strcmp(config->action, "remove")) {
+        if (!gopt_arg(options, 'f', &config->fingerprint)) {
+            return false;
+        }
+    }
+
+    if (!strcmp(config->action, "add")) {
+        if (!gopt_arg(options, 'u', &config->user)) {
+            return false;
+        }
+    }
+
+    return true;
 }
