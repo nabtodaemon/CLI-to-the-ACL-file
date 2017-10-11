@@ -1,8 +1,24 @@
 This CLI is used to list or alter the contents of the ACL file
 
-To compile:
 
-	gcc unabto_acl.c gopt.c -o unabto_acl
+To get the source files, clone our GitHub repository and enter the directory:
+
+        git clone --recursive https://github.com/nabto/appmyproduct-device-stub.git
+        cd appmyproduct-device-stub/unabto_acl
+
+Create a build folder and enter it:
+
+        mkdir build
+        cd build
+
+Build the demo application:
+
+        cmake ..
+        make
+
+Move the built executable to the folder where amp_device_stub executable or acl file is placed:
+
+        mv unabto_acl ~/
 
 To execute:
 
